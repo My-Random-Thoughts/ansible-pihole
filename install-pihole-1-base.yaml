@@ -94,8 +94,7 @@
   - name: create /var/log/unbound/unbound.log
     ansible.builtin.file:
       path: /var/log/unbound/unbound.log
-      create: yes
-      state: present
+      state: touch
       owner: unbound
       group: unbound
 
