@@ -23,7 +23,7 @@
     - name: get sid
       ansible.builtin.set_fact:
         sid: "{{ auth.json.session.sid }}"
-        failed_when: sid == ""
+      failed_when: sid == ""
 
 #    - name: display sid
 #      ansible.builtin.debug:
