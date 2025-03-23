@@ -1,0 +1,2 @@
+^((alt)[0-9](-))?mtalk\\.google\\.com$
+(\\.|^)lencr\\.org$

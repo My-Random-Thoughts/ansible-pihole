@@ -1,0 +1,3 @@
+ajax.googleapis.com
+api.fast.com
+assets.adobedtm.com

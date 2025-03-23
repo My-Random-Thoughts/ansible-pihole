@@ -1,0 +1,140 @@
+---
+- name: Install and configure Pi-Hole
+  hosts: all
+  become: yes
+  become_method: sudo
+  gather_subset:
+    - '!all'
+    - '!min'
+    - 'default_ipv4'
+
+  tasks:
+  - name: create Pi-hole group
+    ansible.builtin.group:
+      name: pihole
+      state: present
+
+  - name: create Pi-hole user
+    ansible.builtin.user:
+      name: pihole
+      group: pihole
+      groups: pihole,www-data
+
+  - name: create /etc/pihole directory
+    ansible.builtin.file:
+      path: /etc/pihole
+      state: directory
+      owner: pihole
+      group: pihole
+
+  - name: create /etc/pihole/pihole.toml
+    ansible.builtin.blockinfile:
+      path: /etc/pihole/pihole.toml
+      create: yes
+      state: present
+      block: |
+        [dns]
+          upstreams = ["127.0.0.1#5335"]
+          ignoreLocalhost = true
+          domainNeeded = true
+
+        [dhcp]
+          [ntp.ipv4]
+            active = false
+
+          [ntp.ipv6]
+            active = false
+
+        [resolver]
+          resolveIPv4 = true
+          resolveIPv6 = false
+
+        [webserver]
+          [webserver.session]
+            restore = false
+
+          [webserver.interface]
+            boxed = false
+
+          [webserver.api]
+            max_sessions = 16
+
+  - name: download installer
+    ansible.builtin.get_url:
+      url: https://install.pi-hole.net
+      dest: /tmp/install-pihole.sh
+      mode: 0740
+
+  - name: install pi-hole
+    ansible.builtin.shell: "PIHOLE_SKIP_OS_CHECK=true /tmp/install-pihole.sh --unattended"
+
+  - name: set default password
+    ansible.builtin.command:
+      cmd: pihole setpassword PUT_YOUR_PASSWORD_HERE
+
+  - name: remove installer
+    ansible.builtin.file:
+      path: /tmp/install-pihole.sh
+      state: absent
+
+
+# UNBOUND INSTALLATION
+  - name: install unbound
+    ansible.builtin.apt:
+      pkg: unbound
+      state: latest
+    changed_when: true
+
+  - name: download root-hints
+    ansible.builtin.get_url:
+      url: https://www.internic.net/domain/named.root
+      dest: /var/lib/unbound/root.hints
+    changed_when: true
+
+  - name: create /var/log/unbound/unbound.log
+    ansible.builtin.file:
+      path: /var/log/unbound/unbound.log
+      create: yes
+      state: present
+      owner: unbound
+      group: unbound
+
+  - name: create /etc/unbound/unbound.conf.d/pi-hole.conf
+    ansible.builtin.blockinfile:
+      path: /etc/unbound/unbound.conf.d/pi-hole.conf
+      create: yes
+      state: present
+      block: |
+        server:
+            logfile: "/var/log/unbound/unbound.log"
+            verbosity: 1
+            interface: 127.0.0.1
+            port: 5353
+            do-ip4: yes
+            do-udp: yes
+            do-tcp: yes
+            do-ip6: no
+            root-hints: "/var/lib/unbound/root.hints"
+            harden-glue: yes
+            harden-dnssec-stripped: yes
+            use-caps-for-id: no
+            edns-buffer-size: 1472
+            prefetch: yes
+            num-threads: 1
+            so-rcvbuf: 1m
+            private-address:
+                192.168.0.0/16
+                169.254.0.0/16
+                172.16.0.0/12
+                10.0.0.0/8
+                fd00::/8
+                fe80::/10
+    changed_when: true
+
+  - name: restart services
+    ansible.builtin.service:
+      name: "{{ item }}"
+      state: restarted
+    with_items:
+      - unbound
+      - pihole-FTL

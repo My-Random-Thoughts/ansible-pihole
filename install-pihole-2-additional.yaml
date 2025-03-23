@@ -1,0 +1,125 @@
+---
+- name: Pi-Hole Additional Configuration
+  hosts: all
+  become: yes
+  become_method: sudo
+  gather_subset:
+    - '!all'
+    - '!min'
+    - 'default_ipv4'
+
+  tasks:
+# GET API TOKEN
+    - name: authenticate with api
+      ansible.builtin.uri:
+        method: POST
+        url: "http://{{ ansible_host }}/api/auth"
+        body: '{"password":"PUT_YOUR_PASSWORD_HERE"}'
+        body_format: "json"
+        status_code: [200, 201]
+      register: auth
+      changed_when: false
+
+    - name: get sid
+      ansible.builtin.set_fact:
+        sid: "{{ auth.json.session.sid }}"
+        failed_when: sid == ""
+
+#    - name: display sid
+#      ansible.builtin.debug:
+#        msg: "{{ sid }}"
+
+    ###################
+    - name: add loopback dns entries
+      ansible.builtin.uri:
+        method: PUT
+        url: "http://{{ ansible_host }}/api/config/dns/hosts/{{ item }}?sid={{ sid }}"
+        status_code: [200, 201]
+      when: item | length > 0
+      register: itemResult
+      failed_when:
+        - (itemResult.json | length > 1)
+        - (itemResult.json.error.message != "Item already present")
+      changed_when: >
+        (itemResult.json | length == 1) or
+        (itemResult.json.error.message != "Item already present")
+      with_items:
+        "{{ lookup('file', 'dns.txt', errors='ignoret').split('\n') }}"
+
+    ###################
+    - name: import allow/deny lists
+      ansible.builtin.include_tasks: "list-importer.yaml"
+      with_nested:
+        - ["allow", "deny"]
+        - ["exact", "regex"]
+
+    ###################
+    - name: create bypass group
+      ansible.builtin.uri:
+        url: "http://{{ ansible_host }}/api/groups?sid={{ sid }}"
+        method: POST
+        body: '{"name":"BypassBlocking", "comment":"Bypass Pihole Blocking", "enabled":true}'
+        body_format: "json"
+        status_code: [200, 201]
+      when: item | length > 0
+      register: itemResult
+      failed_when:
+        - (itemResult.json.processed.errors | length > 0)
+        - (itemResult.json.processed.errors[0].error is not match("UNIQUE constraint failed.*"))
+      changed_when:
+        (itemResult.json.processed.errors | length == 0) or
+        (itemResult.json.processed.errors[0].error is not match("UNIQUE constraint failed.*"))
+
+    - name: get group id
+      ansible.builtin.set_fact:
+        groupId: "{{ group.json.groups[0].id }}"
+      changed_when: false
+
+    - name: add bypass clients
+      ansible.builtin.uri:
+        url: "http://{{ ansible_host }}/api/clients?sid={{ sid }}"
+        method: POST
+        body: '{"groups":["{{ groupId }}"], "client":"{{ item }}", "comment":"Ansible"}'
+        body_format: "json"
+        status_code: [200, 201]
+      when: item | length > 0
+      register: itemResult
+      failed_when:
+        - (itemResult.json.processed.errors | length > 0)
+        - (itemResult.json.processed.errors[0].error is not match("UNIQUE constraint failed.*"))
+      changed_when:
+        (itemResult.json.processed.errors | length == 0) or
+        (itemResult.json.processed.errors[0].error is not match("UNIQUE constraint failed.*"))
+      with_items:
+        "{{ lookup('file', 'bypass-clients.txt', errors='ignore').split('\n') }}"
+
+    ###################
+    - name: add gravity lists
+      ansible.builtin.uri:
+        url: "http://{{ ansible_host }}/api/lists?sid={{ sid }}"
+        method: POST
+        body: '{"type":"block", "comment":"Ansible", "groups":[0], "enabled":true, "address":"{{ item }}"}'
+        body_format: "json"
+        status_code: [200, 201]
+      when: item | length > 0
+      register: itemResult
+      failed_when:
+        - (itemResult.json.processed.errors | length > 0)
+        - (itemResult.json.processed.errors[0].error is not match("UNIQUE constraint failed.*"))
+      changed_when:
+        (itemResult.json.processed.errors | length == 0) or
+        (itemResult.json.processed.errors[0].error is not match("UNIQUE constraint failed.*"))
+      with_items:
+        "{{ lookup('file', 'gravity-list.txt', errors='ignore').split('\n') }}"
+
+    - name: update gravity
+      ansible.builtin.command:
+        cmd: pihole updateGravity
+
+    ###################
+    - name: delete api session
+      ansible.builtin.uri:
+        url: "http://{{ ansible_host }}/auth/session/{{ sid }}"
+        method: POST
+        status_code: [200, 201, 302]
+      changed_when: true

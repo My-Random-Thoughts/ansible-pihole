@@ -1,0 +1,19 @@
+- name: add {{ item[0] }}/{{ item[1] }} entries
+  ansible.builtin.uri:
+    url: "http://{{ ansible_host }}/api/domains/{{ item[0] }}/{{ item[1] }}?sid={{ sid }}"
+    method: POST
+    body: '{"groups":[0], "enabled":true, "comment":"Ansible", "domain":"{{ listItem }}"}'
+    body_format: "json"
+    status_code: [200, 201]
+  when: listItem | length > 0
+  register: itemResult
+  failed_when:
+    - (itemResult.json.processed.errors | length > 0)
+    - (itemResult.json.processed.errors[0].error is not match("UNIQUE constraint failed.*"))
+  changed_when:
+    (itemResult.json.processed.errors | length == 0) or
+    (itemResult.json.processed.errors[0].error is not match("UNIQUE constraint failed.*"))
+  loop_control:
+    loop_var: listItem
+  loop:
+    "{{ lookup('file', '{{ item[0] }}-{{ item[1] }}.txt', errors='ignore').split('\n') }}"

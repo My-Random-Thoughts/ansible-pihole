@@ -1,0 +1,5 @@
+(^|\\.)amazonalexa\\.com$
+(^|\\.)amp\\.cloudflare\\.com$
+(^|\\.)ampproject\\.net$
+(^|\\.)ampproject\\.org$
+(^|\\.)app-measurement\\.com$
