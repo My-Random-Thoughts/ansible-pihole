@@ -61,7 +61,6 @@
         body: '{"name":"BypassBlocking", "comment":"Bypass Pihole Blocking", "enabled":true}'
         body_format: "json"
         status_code: [200, 201]
-      when: item | length > 0
       register: itemResult
       failed_when:
         - (itemResult.json.processed.errors | length > 0)
@@ -72,7 +71,7 @@
 
     - name: get group id
       ansible.builtin.set_fact:
-        groupId: "{{ group.json.groups[0].id }}"
+        groupId: "{{ itemResult.json.groups[0].id }}"
       changed_when: false
 
     - name: add bypass clients
