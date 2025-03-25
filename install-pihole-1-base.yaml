@@ -108,7 +108,7 @@
             logfile: "/var/log/unbound/unbound.log"
             verbosity: 1
             interface: 127.0.0.1
-            port: 5353
+            port: 5335
             do-ip4: yes
             do-udp: yes
             do-tcp: yes
